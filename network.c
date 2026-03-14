@@ -32,7 +32,7 @@ int start_listener(int port) {
     client_fd = accept(server_fd, (struct sockaddr *)&addr, &addr_len);
     if (client_fd < 0) { perror("accept"); exit(1); }
 
-    close(server_fd);  // close listening socket, chat happens on client_fd
+    close(server_fd);
     return client_fd;
 }
 
