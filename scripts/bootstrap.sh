@@ -58,6 +58,3 @@ elif command -v ufw &>/dev/null; then
   sudo ufw allow 5000/tcp
   sudo ufw allow 5051/udp
 fi
-
-echo "Installed. Restart terminal or: source ~/.bashrc"
-echo "  termchat    # just run it, the menu handles everything"

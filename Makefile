@@ -8,7 +8,7 @@ SRC = src/main.c \
       src/tui/tui.c
 
 OBJ = $(SRC:.c=.o)
-TARGET = termchat_plus
+TARGET = termchat
 
 all: $(TARGET)
 
