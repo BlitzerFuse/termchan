@@ -1,2 +1,4 @@
+*.d
 *.o
 termchat
+.termchat_old

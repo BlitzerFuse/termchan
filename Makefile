@@ -1,11 +1,22 @@
-CC=gcc
-CFLAGS=-Wall -Wextra
+CC = gcc
+CFLAGS = -Wall -Iinclude
 
-SRC=main.c network.c chat.c
-OBJ=$(SRC:.c=.o)
+SRC = src/main.c \
+      src/chat/chat.c \
+      src/network/network.c \
+      src/network/discovery.c \
+      src/tui/tui.c
 
-termchat: $(OBJ)
-	$(CC) $(CFLAGS) -o termchat $(OBJ)
+OBJ = $(SRC:.c=.o)
+TARGET = termchat_plus
+
+all: $(TARGET)
+
+$(TARGET): $(OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ -lncurses
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f *.o termchat
+	rm -f $(OBJ) $(TARGET)
