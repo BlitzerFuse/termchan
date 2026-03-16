@@ -116,7 +116,7 @@ int tui_menu(MenuResult *out) {
     /* draw static chrome */
     werase(w);
     box(w, 0, 0);
-    mvwprintw(w, 1, (bw - 8) / 2, "termchat");
+    mvwprintw(w, 1, (bw - 8) / 2, "term-chan");
     mvwhline(w, 2, 1, ACS_HLINE, bw - 2);
     mvwprintw(w, 3, 2, "Your IP : %s", local_ip);
     mvwprintw(w, 4, 2, "Port    : 5000");

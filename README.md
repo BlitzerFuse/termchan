@@ -1,4 +1,4 @@
-## Termchat 
+## Term-chan 
 
 A very bad terminal messaging app i made just to test my skills in C.
 You probably shouldn't use (or even download) this app. It's purely made
@@ -8,7 +8,7 @@ project and I don't recommend using it. I'm just happy it works.
 
 ## Port
 
-Default Port is set to 5000, you can edit the source files to change the port. 
+Default Port is set to 5000 (listen) and 5051 (discovery), you can edit the source files to change the port. 
 
 ## Features
 
@@ -20,7 +20,7 @@ Default Port is set to 5000, you can edit the source files to change the port.
 ## Project Structure
 
 ```
-termchat_plus/
+termchan/
 ├── include/
 │   ├── chat.h
 │   ├── discovery.h
@@ -74,7 +74,7 @@ make clean
 ## Usage
 
 ```bash
-./termchat_plus
+./termchan
 ```
 
 On first run, the app will scan for peers on the local network. Once a peer is found, select them from the list and start chatting.
