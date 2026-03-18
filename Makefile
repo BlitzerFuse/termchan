@@ -4,11 +4,13 @@ CFLAGS = -Wall -Iinclude
 SRC = src/main.c \
       src/chat/chat.c \
 			src/chat/commands.c \
+			src/chat/room.c \
       src/network/network.c \
       src/network/discovery.c \
       src/tui/tui.c \
 			src/tui/tui_menu.c \
-			src/tui/tui_chat.c 
+			src/tui/tui_chat.c \
+			src/tui/tui_lobby.c 
 
 OBJ = $(SRC:.c=.o)
 TARGET = termchan

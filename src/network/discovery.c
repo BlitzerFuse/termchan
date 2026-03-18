@@ -9,215 +9,218 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#include <pthread.h>
+#include <stdlib.h>
 
-#define DISC_PING    "TERMCHAT_DISCOVER"
-#define DISC_PONG    "TERMCHAT_HERE"
-#define TIMEOUT_SEC  3   /* total scan window */
-#define PING_INTERVAL_MS 600  /* re-ping every 600ms within the window */
+#define BEACON          "TERMCHAT_BEACON"
+#define BEACON_INTERVAL_MS 500
+#define PEER_TTL_MS     2000   /* remove peer if not heard from for 2s */
 
-/* Walk interfaces and return the broadcast address of the first non-loopback,
-   broadcast-capable, up interface. Falls back to 255.255.255.255. */
+/* ------------------------------------------------------------------ */
+/* Internal peer table with TTL                                        */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    Peer            p;
+    struct timespec last_seen;
+    int             active;
+} PeerEntry;
+
+static PeerEntry    g_table[MAX_PEERS];
+static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
+
+static long ms_since(struct timespec *t) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (now.tv_sec  - t->tv_sec)  * 1000
+         + (now.tv_nsec - t->tv_nsec) / 1000000;
+}
+
+static void table_upsert(const char *ip, const char *nick) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+
+    pthread_mutex_lock(&g_mu);
+    for (int i = 0; i < MAX_PEERS; i++) {
+        if (g_table[i].active &&
+            strcmp(g_table[i].p.ip, ip) == 0) {
+            g_table[i].last_seen = now;
+            strncpy(g_table[i].p.nickname, nick, MAX_NAME - 1);
+            pthread_mutex_unlock(&g_mu);
+            return;
+        }
+    }
+    for (int i = 0; i < MAX_PEERS; i++) {
+        if (!g_table[i].active) {
+            strncpy(g_table[i].p.ip,       ip,   sizeof(g_table[i].p.ip)       - 1);
+            strncpy(g_table[i].p.nickname, nick, sizeof(g_table[i].p.nickname) - 1);
+            g_table[i].last_seen = now;
+            g_table[i].active    = 1;
+            pthread_mutex_unlock(&g_mu);
+            return;
+        }
+    }
+    pthread_mutex_unlock(&g_mu);
+}
+
+static void table_expire(void) {
+    pthread_mutex_lock(&g_mu);
+    for (int i = 0; i < MAX_PEERS; i++)
+        if (g_table[i].active && ms_since(&g_table[i].last_seen) > PEER_TTL_MS)
+            g_table[i].active = 0;
+    pthread_mutex_unlock(&g_mu);
+}
+
+int discovery_peers(Peer *peers, int max) {
+    table_expire();
+    pthread_mutex_lock(&g_mu);
+    int count = 0;
+    for (int i = 0; i < MAX_PEERS && count < max; i++)
+        if (g_table[i].active)
+            peers[count++] = g_table[i].p;
+    pthread_mutex_unlock(&g_mu);
+    return count;
+}
+
+void discovery_reset(void) {
+    pthread_mutex_lock(&g_mu);
+    memset(g_table, 0, sizeof(g_table));
+    pthread_mutex_unlock(&g_mu);
+}
+
+/* ------------------------------------------------------------------ */
+/* Network helpers                                                     */
+/* ------------------------------------------------------------------ */
+
 static in_addr_t get_broadcast_addr(void) {
     struct ifaddrs *ifap, *ifa;
     in_addr_t result = INADDR_BROADCAST;
-
     if (getifaddrs(&ifap) < 0) return result;
-
     for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
         if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
         if (ifa->ifa_flags & IFF_LOOPBACK)    continue;
         if (!(ifa->ifa_flags & IFF_UP))        continue;
         if (!(ifa->ifa_flags & IFF_BROADCAST)) continue;
         if (!ifa->ifa_broadaddr)               continue;
-
         result = ((struct sockaddr_in *)ifa->ifa_broadaddr)->sin_addr.s_addr;
         break;
     }
-
     freeifaddrs(ifap);
     return result;
 }
 
-/* Get our own real non-loopback IP via getifaddrs so self-filtering works
-   correctly. getsockname() on an INADDR_ANY socket returns 0.0.0.0, which
-   never matches incoming packets and breaks the self-filter. */
-static in_addr_t get_local_addr(void) {
+static int is_local_addr(in_addr_t addr) {
     struct ifaddrs *ifap, *ifa;
-    in_addr_t result = 0;
-
-    if (getifaddrs(&ifap) < 0) return result;
-
+    if (getifaddrs(&ifap) < 0) return 0;
     for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
         if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
-        if (ifa->ifa_flags & IFF_LOOPBACK) continue;
-        if (!(ifa->ifa_flags & IFF_UP))    continue;
-
-        result = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
-        break;
+        if (((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr == addr) {
+            freeifaddrs(ifap);
+            return 1;
+        }
     }
-
     freeifaddrs(ifap);
-    return result;
+    return 0;
 }
 
-static long ms_until(struct timespec *deadline) {
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    return (deadline->tv_sec  - now.tv_sec)  * 1000
-         + (deadline->tv_nsec - now.tv_nsec) / 1000000;
-}
+/* ------------------------------------------------------------------ */
+/* Background beacon thread                                            */
+/* ------------------------------------------------------------------ */
 
-int discover_peers(Peer *peers, int max, const char *my_nickname) {
+typedef struct {
+    char         nickname[MAX_NAME];
+    volatile int stop;
+} BeaconArgs;
+
+static BeaconArgs  *g_beacon = NULL;
+static pthread_t    g_beacon_tid;
+
+static void *beacon_thread(void *arg) {
+    BeaconArgs *a = arg;
+
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) return 0;
+    if (sock < 0) return NULL;
 
-    int bcast = 1;
+    int bcast = 1, reuse = 1;
     setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &bcast, sizeof(bcast));
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#ifdef SO_REUSEPORT
+    setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+#endif
 
-    /* Bind to an ephemeral port — replies come back here */
+    /* Bind to DISCOVERY_PORT so we receive beacons from others */
     struct sockaddr_in local = {
         .sin_family      = AF_INET,
         .sin_addr.s_addr = INADDR_ANY,
-        .sin_port        = 0
+        .sin_port        = htons(DISCOVERY_PORT)
     };
     if (bind(sock, (struct sockaddr *)&local, sizeof(local)) < 0) {
-        close(sock); return 0;
+        close(sock); return NULL;
     }
 
-    in_addr_t baddr    = get_broadcast_addr();
-    in_addr_t self_ip  = get_local_addr();   /* real local IP for self-filter */
+    /* Non-blocking receive — we poll every BEACON_INTERVAL_MS */
+    struct timeval tv = { .tv_sec = 0, .tv_usec = BEACON_INTERVAL_MS * 1000 };
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    char ping[128];
-    snprintf(ping, sizeof(ping), "%s %s", DISC_PING, my_nickname);
-
+    in_addr_t baddr = get_broadcast_addr();
     struct sockaddr_in dest = {
         .sin_family      = AF_INET,
         .sin_port        = htons(DISCOVERY_PORT),
         .sin_addr.s_addr = baddr
     };
 
-    /* Brief pause before first ping — gives the peer's discovery_respond
-       thread time to bind its socket. Without this, the first broadcast
-       fires before the listener is ready and gets silently dropped. */
-    usleep(150000); /* 150ms */
+    char beacon[128];
+    snprintf(beacon, sizeof(beacon), "%s %s", BEACON, a->nickname);
 
-    /* Deadline for the whole scan */
-    struct timespec deadline;
-    clock_gettime(CLOCK_MONOTONIC, &deadline);
-    deadline.tv_sec += TIMEOUT_SEC;
+    while (!a->stop) {
+        /* Broadcast our presence */
+        sendto(sock, beacon, strlen(beacon), 0,
+               (struct sockaddr *)&dest, sizeof(dest));
 
-    /* Next time we should send a ping */
-    struct timespec next_ping;
-    clock_gettime(CLOCK_MONOTONIC, &next_ping);
-
-    int count = 0;
-    fd_set fds;
-
-    while (count < max) {
-        long ms_left = ms_until(&deadline);
-        if (ms_left <= 0) break;
-
-        /* Send a (re)ping if it's time */
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        long ms_to_ping = (next_ping.tv_sec  - now.tv_sec)  * 1000
-                        + (next_ping.tv_nsec - now.tv_nsec) / 1000000;
-
-        if (ms_to_ping <= 0) {
-            sendto(sock, ping, strlen(ping), 0,
-                   (struct sockaddr *)&dest, sizeof(dest));
-            /* Schedule next ping */
-            clock_gettime(CLOCK_MONOTONIC, &next_ping);
-            next_ping.tv_sec  += PING_INTERVAL_MS / 1000;
-            next_ping.tv_nsec += (PING_INTERVAL_MS % 1000) * 1000000;
-            if (next_ping.tv_nsec >= 1000000000L) {
-                next_ping.tv_sec++;
-                next_ping.tv_nsec -= 1000000000L;
-            }
-            ms_to_ping = PING_INTERVAL_MS;
-        }
-
-        /* Wait for a reply, but no longer than time-to-next-ping */
-        long wait_ms = ms_to_ping < ms_left ? ms_to_ping : ms_left;
-        struct timeval tv = { wait_ms / 1000, (wait_ms % 1000) * 1000 };
-        FD_ZERO(&fds);
-        FD_SET(sock, &fds);
-        if (select(sock + 1, &fds, NULL, NULL, &tv) <= 0) continue;
-
+        /* Listen for peers */
         char buf[256] = {0};
         struct sockaddr_in from;
         socklen_t flen = sizeof(from);
         ssize_t n = recvfrom(sock, buf, sizeof(buf) - 1, 0,
                              (struct sockaddr *)&from, &flen);
         if (n <= 0) continue;
-
-        /* Discard anything that isn't a pong */
-        if (strncmp(buf, DISC_PONG, strlen(DISC_PONG)) != 0) continue;
-
-        /* Discard our own reply using real local IP */
-        if (self_ip && from.sin_addr.s_addr == self_ip) continue;
+        if (strncmp(buf, BEACON, strlen(BEACON)) != 0) continue;
+        if (is_local_addr(from.sin_addr.s_addr)) continue;
         if ((ntohl(from.sin_addr.s_addr) >> 24) == 127) continue;
 
-        const char *nick = buf + strlen(DISC_PONG);
+        const char *nick = buf + strlen(BEACON);
         while (*nick == ' ') nick++;
+        if (*nick == '\0') continue;
 
-        /* Deduplicate by IP */
-        int dup = 0;
-        for (int i = 0; i < count; i++) {
-            if (strcmp(peers[i].ip, inet_ntoa(from.sin_addr)) == 0) {
-                dup = 1; break;
-            }
-        }
-        if (dup) continue;
-
-        strncpy(peers[count].ip, inet_ntoa(from.sin_addr),
-                sizeof(peers[count].ip) - 1);
-        snprintf(peers[count].nickname, sizeof(peers[count].nickname), "%.*s",
-                 (int)(sizeof(peers[count].nickname) - 1), nick);
-        count++;
+        table_upsert(inet_ntoa(from.sin_addr), nick);
     }
 
     close(sock);
-    return count;
+    return NULL;
 }
 
-void discovery_respond(const char *my_nickname, volatile int *stop) {
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) return;
+/* ------------------------------------------------------------------ */
+/* Public API                                                          */
+/* ------------------------------------------------------------------ */
 
-    int reuse = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+void discovery_start(const char *my_nickname) {
+    if (g_beacon) return;   /* already running */
 
-    /* Poll every 500ms so we can check the stop flag */
-    struct timeval tv = { .tv_sec = 0, .tv_usec = 500000 };
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    memset(g_table, 0, sizeof(g_table));
 
-    struct sockaddr_in addr = {
-        .sin_family      = AF_INET,
-        .sin_addr.s_addr = INADDR_ANY,
-        .sin_port        = htons(DISCOVERY_PORT)
-    };
-    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        close(sock); return;
-    }
+    g_beacon = malloc(sizeof(BeaconArgs));
+    if (!g_beacon) return;
+    strncpy(g_beacon->nickname, my_nickname, MAX_NAME - 1);
+    g_beacon->nickname[MAX_NAME - 1] = '\0';
+    g_beacon->stop = 0;
 
-    while (!stop || !*stop) {
-        char buf[256] = {0};
-        struct sockaddr_in from;
-        socklen_t flen = sizeof(from);
-        ssize_t n = recvfrom(sock, buf, sizeof(buf) - 1, 0,
-                             (struct sockaddr *)&from, &flen);
-        if (n <= 0) continue; /* timeout or error — loop and check stop */
-        if (strncmp(buf, DISC_PING, strlen(DISC_PING)) != 0) continue;
+    pthread_create(&g_beacon_tid, NULL, beacon_thread, g_beacon);
+}
 
-        const char *nick = buf + strlen(DISC_PING);
-        while (*nick == ' ') nick++;
-
-        char reply[128];
-        snprintf(reply, sizeof(reply), "%s %s", DISC_PONG, my_nickname);
-        sendto(sock, reply, strlen(reply), 0,
-               (struct sockaddr *)&from, flen);
-    }
-
-    close(sock);
+void discovery_stop(void) {
+    if (!g_beacon) return;
+    g_beacon->stop = 1;
+    pthread_join(g_beacon_tid, NULL);
+    free(g_beacon);
+    g_beacon = NULL;
 }

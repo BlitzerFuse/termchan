@@ -2,39 +2,24 @@
 #define COMMANDS_H
 
 #include "protocol.h"
+#include "session.h"
 #include <stddef.h>
 
-/* Return codes for command handlers */
 typedef enum {
-    CMD_OK,       /* command handled, continue loop  */
-    CMD_QUIT,     /* /quit — caller should break      */
-    CMD_UNKNOWN   /* not a registered command         */
+    CMD_OK,
+    CMD_QUIT,
+    CMD_UNKNOWN
 } CmdResult;
 
-/*
- * A single command entry.
- *   name    — the slash-word, e.g. "quit"  (no leading slash)
- *   usage   — shown by /help, e.g. "/quit"
- *   handler — called with (args, nickname, socket_fd)
- *             args is the remainder of the input after the command word
- *             (may be an empty string, never NULL)
- *             socket_fd is -1 when no live connection is available
- */
 typedef struct {
     const char *name;
     const char *usage;
-    CmdResult (*handler)(const char *args, char *nickname, int socket_fd);
+    CmdResult (*handler)(const char *args, char *nickname, Session *s);
 } Command;
 
-/*
- * Dispatch an input line that begins with '/'.
- * Returns CMD_QUIT if the session should end, CMD_OK otherwise.
- * Prints status/help messages itself via tui_status().
- */
-CmdResult cmd_dispatch(const char *input, char *nickname, int socket_fd);
+CmdResult cmd_dispatch(const char *input, char *nickname, Session *s);
 
-/* Register a custom command at runtime (max 16 extras). */
 int cmd_register(const char *name, const char *usage,
-                 CmdResult (*handler)(const char *, char *, int));
+                 CmdResult (*handler)(const char *, char *, Session *));
 
-#endif /* COMMANDS_H */
+#endif

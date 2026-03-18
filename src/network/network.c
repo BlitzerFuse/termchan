@@ -9,22 +9,15 @@
 int init_listener(int port) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) { perror("socket"); return -1; }
-
     int opt = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
     struct sockaddr_in addr = {
-        .sin_family      = AF_INET,
-        .sin_addr.s_addr = INADDR_ANY,
-        .sin_port        = htons(port)
+        .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY, .sin_port = htons(port)
     };
-
     if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("bind"); close(sock); return -1;
     }
-    if (listen(sock, 5) < 0) {
-        perror("listen"); close(sock); return -1;
-    }
+    if (listen(sock, 5) < 0) { perror("listen"); close(sock); return -1; }
     return sock;
 }
 
@@ -35,29 +28,25 @@ int accept_connection(int listener_fd, char *peer_ip, char *peer_nick, char *pee
     if (conn < 0) { perror("accept"); return -1; }
     if (peer_ip) strncpy(peer_ip, inet_ntoa(addr.sin_addr), 63);
 
-    /* Timeout: don't block forever if client connects but sends nothing */
     struct timeval tv = { .tv_sec = 10, .tv_usec = 0 };
     setsockopt(conn, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    /* Wait for the CONN_REQUEST handshake packet */
     Packet p;
     if (recv(conn, &p, sizeof(Packet), 0) <= 0 || p.type != CONN_REQUEST) {
-        close(conn);
-        return -1;
+        close(conn); return -1;
     }
 
-    /* Clear the timeout for normal chat use */
     tv.tv_sec = 0;
     setsockopt(conn, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     if (peer_nick) strncpy(peer_nick, p.sender,   MAX_NAME - 1);
     if (peer_pass) strncpy(peer_pass, p.password, MAX_PASS - 1);
-
     return conn;
 }
 
-int send_conn_accept(int sock_fd) {
+int send_conn_accept(int sock_fd, const char *my_nick) {
     Packet p = { .type = CONN_ACCEPT };
+    if (my_nick) strncpy(p.sender, my_nick, MAX_NAME - 1);
     return send(sock_fd, &p, sizeof(Packet), 0) > 0 ? 0 : -1;
 }
 
@@ -75,36 +64,26 @@ int send_conn_wrong_pass(int sock_fd) {
     return 0;
 }
 
-int connect_to_peer(const char *ip, int port, const char *my_nickname, const char *password) {
+int connect_to_peer(const char *ip, int port, const char *my_nickname,
+                    const char *password, char *host_nick_out) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) { perror("socket"); return -1; }
-
-    struct sockaddr_in addr = {
-        .sin_family = AF_INET,
-        .sin_port   = htons(port)
-    };
+    struct sockaddr_in addr = { .sin_family = AF_INET, .sin_port = htons(port) };
     inet_pton(AF_INET, ip, &addr.sin_addr);
-
     if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("connect"); close(sock); return -1;
     }
-
-    /* Send connection request with nickname and password */
     Packet req = { .type = CONN_REQUEST };
     strncpy(req.sender,   my_nickname, MAX_NAME - 1);
     strncpy(req.password, password ? password : "", MAX_PASS - 1);
-    if (send(sock, &req, sizeof(Packet), 0) <= 0) {
-        close(sock); return -1;
-    }
+    if (send(sock, &req, sizeof(Packet), 0) <= 0) { close(sock); return -1; }
 
-    /* Wait for response */
     Packet resp;
-    if (recv(sock, &resp, sizeof(Packet), 0) <= 0) {
-        close(sock); return -1;
-    }
+    if (recv(sock, &resp, sizeof(Packet), 0) <= 0) { close(sock); return -1; }
     if (resp.type == CONN_WRONG_PASS) { close(sock); return NET_ERR_WRONGPASS; }
     if (resp.type == CONN_REJECT)     { close(sock); return NET_ERR_REJECTED; }
     if (resp.type != CONN_ACCEPT)     { close(sock); return NET_ERR_GENERIC; }
 
+    if (host_nick_out) strncpy(host_nick_out, resp.sender, MAX_NAME - 1);
     return sock;
 }

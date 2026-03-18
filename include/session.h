@@ -1,0 +1,16 @@
+#ifndef SESSION_H
+#define SESSION_H
+
+#include "protocol.h"
+
+#define MAX_CLIENTS 7
+
+typedef struct {
+    int  fds[MAX_CLIENTS];
+    char nicks[MAX_CLIENTS][MAX_NAME];
+    int  count;
+    char my_nick[MAX_NAME];
+    int  is_host;
+} Session;
+
+#endif
