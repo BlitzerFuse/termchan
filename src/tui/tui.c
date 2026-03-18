@@ -1,6 +1,7 @@
 #include "tui.h"
 #include "tui_internal.h"
 #include <ncurses.h>
+#include <locale.h>
 #include <signal.h>
 
 static volatile sig_atomic_t g_resized = 0;
@@ -16,6 +17,7 @@ int tui_was_resized(void) {
 
 void ncurses_start(void) {
     if (stdscr) return;
+    setlocale(LC_ALL, "");
     initscr();
     cbreak();
     noecho();

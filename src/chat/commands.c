@@ -26,13 +26,27 @@ static CmdResult handle_clear(const char *args, char *nickname, Session *s) {
 }
 
 static CmdResult handle_me(const char *args, char *nickname, Session *s) {
-    if (!args || args[0] == '\0') { tui_status("Usage: /me <action>"); return CMD_OK; }
-    Packet out = { .type = MSG };
-    strncpy(out.sender, nickname, MAX_NAME - 1);
-    strncpy(out.target, "everyone", MAX_NAME - 1);
-    snprintf(out.content, MAX_MSG - 1, "* %s %s", nickname, args);
-    room_broadcast(s, &out, -1);
-    tui_status("%s", out.content);
+    (void)args;
+    char ip[64];
+    tui_get_local_ip(ip, sizeof(ip));
+    tui_status("You are %s | IP: %s | Role: %s | Peers: %d",
+               nickname,
+               ip,
+               s->is_host ? "host" : "guest",
+               s->count);
+    return CMD_OK;
+}
+
+static CmdResult handle_pass(const char *args, char *nickname, Session *s) {
+    (void)args; (void)nickname;
+    if (!s->is_host) {
+        tui_status("Only the host can use /pass.");
+        return CMD_OK;
+    }
+    if (s->password[0])
+        tui_status("Session password: %s", s->password);
+    else
+        tui_status("This session has no password.");
     return CMD_OK;
 }
 
@@ -63,9 +77,10 @@ static const Command builtins[] = {
     { "quit",  "/quit",          handle_quit  },
     { "nick",  "/nick <n>",      handle_nick  },
     { "clear", "/clear",         handle_clear },
-    { "me",    "/me <action>",   handle_me    },
+    { "me",    "/me",            handle_me    },
     { "ip",    "/ip",            handle_ip    },
     { "reply", "/reply <msg>",   handle_reply },
+    { "pass",  "/pass",          handle_pass  },
     { "help",  "/help",          handle_help  },
 };
 #define N_BUILTINS ((int)(sizeof(builtins) / sizeof(builtins[0])))

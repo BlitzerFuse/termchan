@@ -75,7 +75,6 @@ int tui_menu(MenuResult *out) {
     for (int i = 0; out->nickname[i]; i++)
         if (out->nickname[i] == ' ') out->nickname[i] = '_';
 
-    /* Start beacon immediately after nickname is known — both modes */
     discovery_start(out->nickname);
 
     mvwhline(w, 7, 1, ACS_HLINE, bw - 2);
@@ -165,7 +164,7 @@ pw_done:
         int   count   = 0;
         int   peer_sel = 0;
 
-        wtimeout(w, 300);   /* refresh peer list every 300ms */
+        wtimeout(w, 200);   /* refresh peer list every 300ms */
         while (1) {
             count = discovery_peers(peers, MAX_PEERS);
             if (peer_sel >= count) peer_sel = count > 0 ? count - 1 : 0;
@@ -224,48 +223,37 @@ abort:
 }
 
 void tui_waiting(int port, const char *password) {
-    clear();
-    int cy = LINES / 2;
-    int cx = (COLS - 40) / 2;
-    if (cx < 0) cx = 0;
-    const int w = 38;
-    mvaddch(cy-1, cx, ACS_ULCORNER); mvhline(cy-1, cx+1, ACS_HLINE, w); mvaddch(cy-1, cx+w+1, ACS_URCORNER);
-    mvaddch(cy, cx, ACS_VLINE);
-    char line1[40];
-    snprintf(line1, sizeof(line1), "  Waiting for connection on port %-4d", port);
-    mvprintw(cy, cx+1, "%-*s", w, line1);
-    mvaddch(cy, cx+w+1, ACS_VLINE);
-    mvaddch(cy+1, cx, ACS_VLINE);
-    if (password && password[0]) {
-        char pw_line[40];
-        snprintf(pw_line, sizeof(pw_line), "  Password: %s", password);
-        mvprintw(cy+1, cx+1, "%-*s", w, pw_line);
-    } else {
-        mvprintw(cy+1, cx+1, "%-*s", w, "  No password set");
-    }
-    mvaddch(cy+1, cx+w+1, ACS_VLINE);
-    mvaddch(cy+2, cx, ACS_VLINE);
-    mvprintw(cy+2, cx+1, "%-*s", w, "  Press Ctrl-C to cancel");
-    mvaddch(cy+2, cx+w+1, ACS_VLINE);
-    mvaddch(cy+3, cx, ACS_LLCORNER); mvhline(cy+3, cx+1, ACS_HLINE, w); mvaddch(cy+3, cx+w+1, ACS_LRCORNER);
-    refresh();
+    clear(); refresh();
+    const int bw = 44, bh = 6;
+    int bx = (COLS - bw) / 2, by = (LINES - bh) / 2;
+    if (bx < 0) bx = 0;
+    if (by < 0) by = 0;
+    WINDOW *w = newwin(bh, bw, by, bx);
+    werase(w); box(w, 0, 0);
+    mvwprintw(w, 1, (bw - 10) / 2, "Term-chan");
+    mvwhline(w, 2, 1, ACS_HLINE, bw - 2);
+    mvwprintw(w, 3, 2, "Waiting for connection on port %d", port);
+    if (password && password[0])
+        mvwprintw(w, 4, 2, "Password: %s", password);
+    else
+        mvwprintw(w, 4, 2, "No password set  (Ctrl-C to quit)");
+    wrefresh(w);
+    delwin(w);
 }
 
 void tui_waiting_for_start(void) {
-    clear();
-    int cy = LINES / 2;
-    int cx = (COLS - 40) / 2;
-    if (cx < 0) cx = 0;
-    const int w = 38;
-    mvaddch(cy-1, cx, ACS_ULCORNER); mvhline(cy-1, cx+1, ACS_HLINE, w); mvaddch(cy-1, cx+w+1, ACS_URCORNER);
-    mvaddch(cy, cx, ACS_VLINE);
-    mvprintw(cy, cx+1, "%-*s", w, "  Connected! Waiting for host...");
-    mvaddch(cy, cx+w+1, ACS_VLINE);
-    mvaddch(cy+1, cx, ACS_VLINE);
-    mvprintw(cy+1, cx+1, "%-*s", w, "  Chat will begin shortly.");
-    mvaddch(cy+1, cx+w+1, ACS_VLINE);
-    mvaddch(cy+2, cx, ACS_LLCORNER); mvhline(cy+2, cx+1, ACS_HLINE, w); mvaddch(cy+2, cx+w+1, ACS_LRCORNER);
-    refresh();
+    clear(); refresh();
+    const int bw = 40, bh = 5;
+    int bx = (COLS - bw) / 2, by = (LINES - bh) / 2;
+    if (bx < 0) bx = 0;
+    if (by < 0) by = 0;
+    WINDOW *w = newwin(bh, bw, by, bx);
+    werase(w); box(w, 0, 0);
+    mvwprintw(w, 1, (bw - 10) / 2, "Term-chan");
+    mvwhline(w, 2, 1, ACS_HLINE, bw - 2);
+    mvwprintw(w, 3, 2, "Connected! Waiting for host to start...");
+    wrefresh(w);
+    delwin(w);
 }
 
 int tui_accept_request(const char *peer_nick, const char *peer_ip) {

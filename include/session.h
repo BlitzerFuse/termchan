@@ -10,6 +10,7 @@ typedef struct {
     char nicks[MAX_CLIENTS][MAX_NAME];
     int  count;
     char my_nick[MAX_NAME];
+    char password[MAX_PASS];
     int  is_host;
 } Session;
 

@@ -72,4 +72,3 @@ fi
 echo ""
 echo "termchan installed successfully!"
 echo "run: source ~/.bashrc"
-echo "type: termchan to open TUI"

@@ -14,11 +14,7 @@
 
 #define BEACON          "TERMCHAT_BEACON"
 #define BEACON_INTERVAL_MS 500
-#define PEER_TTL_MS     2000   /* remove peer if not heard from for 2s */
-
-/* ------------------------------------------------------------------ */
-/* Internal peer table with TTL                                        */
-/* ------------------------------------------------------------------ */
+#define PEER_TTL_MS     5000
 
 typedef struct {
     Peer            p;
@@ -88,10 +84,6 @@ void discovery_reset(void) {
     pthread_mutex_unlock(&g_mu);
 }
 
-/* ------------------------------------------------------------------ */
-/* Network helpers                                                     */
-/* ------------------------------------------------------------------ */
-
 static in_addr_t get_broadcast_addr(void) {
     struct ifaddrs *ifap, *ifa;
     in_addr_t result = INADDR_BROADCAST;
@@ -123,10 +115,6 @@ static int is_local_addr(in_addr_t addr) {
     return 0;
 }
 
-/* ------------------------------------------------------------------ */
-/* Background beacon thread                                            */
-/* ------------------------------------------------------------------ */
-
 typedef struct {
     char         nickname[MAX_NAME];
     volatile int stop;
@@ -148,7 +136,6 @@ static void *beacon_thread(void *arg) {
     setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
 #endif
 
-    /* Bind to DISCOVERY_PORT so we receive beacons from others */
     struct sockaddr_in local = {
         .sin_family      = AF_INET,
         .sin_addr.s_addr = INADDR_ANY,
@@ -158,7 +145,6 @@ static void *beacon_thread(void *arg) {
         close(sock); return NULL;
     }
 
-    /* Non-blocking receive — we poll every BEACON_INTERVAL_MS */
     struct timeval tv = { .tv_sec = 0, .tv_usec = BEACON_INTERVAL_MS * 1000 };
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
@@ -173,11 +159,8 @@ static void *beacon_thread(void *arg) {
     snprintf(beacon, sizeof(beacon), "%s %s", BEACON, a->nickname);
 
     while (!a->stop) {
-        /* Broadcast our presence */
         sendto(sock, beacon, strlen(beacon), 0,
                (struct sockaddr *)&dest, sizeof(dest));
-
-        /* Listen for peers */
         char buf[256] = {0};
         struct sockaddr_in from;
         socklen_t flen = sizeof(from);
@@ -199,12 +182,9 @@ static void *beacon_thread(void *arg) {
     return NULL;
 }
 
-/* ------------------------------------------------------------------ */
-/* Public API                                                          */
-/* ------------------------------------------------------------------ */
-
+// Public API
 void discovery_start(const char *my_nickname) {
-    if (g_beacon) return;   /* already running */
+    if (g_beacon) return;
 
     memset(g_table, 0, sizeof(g_table));
 

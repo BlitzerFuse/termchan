@@ -42,7 +42,6 @@ int tui_lobby(Session *s, int listener_fd, const char *password) {
         if (ch == '\n' || ch == '\r') break;
         if (ch == 'q'  || ch == 27)  { delwin(w); endwin(); return -1; }
 
-        /* Check for incoming connections without blocking */
         fd_set rfds;
         struct timeval tv = { .tv_sec = 0, .tv_usec = 300000 };
         FD_ZERO(&rfds);

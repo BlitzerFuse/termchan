@@ -18,11 +18,11 @@ int main(void) {
     if (tui_menu(&menu) < 0)
         return 0;
 
-    /* Discovery beacon no longer needed once we have an IP to connect to */
     discovery_stop();
 
     Session s = {0};
-    strncpy(s.my_nick, menu.nickname, MAX_NAME - 1);
+    strncpy(s.my_nick,   menu.nickname, MAX_NAME - 1);
+    strncpy(s.password,  menu.password, MAX_PASS - 1);
 
     if (menu.mode == MODE_LISTEN) {
         s.is_host = 1;
