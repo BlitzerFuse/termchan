@@ -35,6 +35,19 @@ static void *peer_recv_thread(void *arg) {
             break;
         }
 
+        if (p.type == NICK_CHANGE) {
+            for (int i = 0; i < a->s->count; i++) {
+                if (a->s->fds[i] == a->fd) {
+                    strncpy(a->s->nicks[i], p.content, MAX_NAME - 1);
+                    break;
+                }
+            }
+            if (a->s->is_host)
+                room_broadcast(a->s, &p, a->fd);
+            if (a->display_cb) a->display_cb(&p);
+            continue;
+        }
+
         if (a->s->is_host) {
             strncpy(p.target, "everyone", MAX_NAME - 1);
             room_broadcast(a->s, &p, a->fd);

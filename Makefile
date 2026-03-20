@@ -23,8 +23,5 @@ $(TARGET): $(OBJ)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-disc_debug: tools/debug/disc_debug.c
-	$(CC) $(CFLAGS) -o tools/debug/disc_debug tools/debug/disc_debug.c
-
 clean:
 	rm -f $(OBJ) $(TARGET)

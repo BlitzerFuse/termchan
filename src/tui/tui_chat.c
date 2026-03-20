@@ -67,6 +67,10 @@ void tui_display_message(Packet *p) {
         case PEER_LEAVE:
             wprintw(msg_win, "--- %s ---\n", p->content);
             break;
+        case NICK_CHANGE:
+            wprintw(msg_win, "--- %s is now known as %s ---\n",
+                    p->sender, p->content);
+            break;
         default:
             break;
     }

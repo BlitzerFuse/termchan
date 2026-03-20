@@ -5,7 +5,17 @@
 #define MAX_MSG  512
 #define MAX_PASS 8
 
-typedef enum { MSG, CONN_REQUEST, CONN_ACCEPT, CONN_REJECT, CONN_WRONG_PASS, CHAT_START, PEER_JOIN, PEER_LEAVE, } MsgType;
+typedef enum {
+    MSG,
+    CONN_REQUEST,
+    CONN_ACCEPT,
+    CONN_REJECT,
+    CONN_WRONG_PASS,
+    CHAT_START,
+    PEER_JOIN,
+    PEER_LEAVE,
+    NICK_CHANGE,
+} MsgType;
 
 typedef struct {
     MsgType type;

@@ -8,6 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <net/if.h>
+#include <ifaddrs.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 
 static const char PASS_CHARS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 #define PASS_LEN 6
@@ -15,14 +19,19 @@ static const char PASS_CHARS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 void tui_get_local_ip(char *buf, size_t len) {
     strncpy(buf, "unavailable", len - 1);
     buf[len - 1] = '\0';
-    FILE *f = popen("hostname -i 2>/dev/null", "r");
-    if (!f) return;
-    char tmp[128] = {0};
-    if (fgets(tmp, sizeof(tmp), f)) {
-        char *tok = strtok(tmp, " \t\n");
-        if (tok) { strncpy(buf, tok, len - 1); buf[len - 1] = '\0'; }
+    struct ifaddrs *ifap, *ifa;
+    if (getifaddrs(&ifap) < 0) return;
+    for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+        if (ifa->ifa_flags & IFF_LOOPBACK) continue;
+        if (!(ifa->ifa_flags & IFF_UP))    continue;
+        const char *ip = inet_ntoa(
+            ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr);
+        strncpy(buf, ip, len - 1);
+        buf[len - 1] = '\0';
+        break;
     }
-    pclose(f);
+    freeifaddrs(ifap);
 }
 
 static void draw_peer_list(WINDOW *w, int bw, Peer *peers, int count, int sel) {
@@ -61,13 +70,20 @@ int tui_menu(MenuResult *out) {
     mvwprintw(w, 1, (bw - 8) / 2, "Term-chan");
     mvwhline(w, 2, 1, ACS_HLINE, bw - 2);
     mvwprintw(w, 3, 2, "Your IP : %s", local_ip);
-    mvwprintw(w, 4, 2, "Port    : 5000");
-    mvwhline(w, 5, 1, ACS_HLINE, bw - 2);
-    mvwprintw(w, 6, 2, "Nickname: ");
+    mvwprintw(w, 4, 2, "Port    : ");
+    mvwprintw(w, 5, 2, "Nickname: ");
+    mvwhline(w, 6, 1, ACS_HLINE, bw - 2);
     wrefresh(w);
 
     echo(); curs_set(1);
-    wmove(w, 6, 12);
+
+    char port_str[6] = "5000";
+    wmove(w, 4, 12);
+    wgetnstr(w, port_str, 5);
+    out->port = atoi(port_str);
+    if (out->port <= 0 || out->port > 65535) out->port = 5000;
+
+    wmove(w, 5, 12);
     wgetnstr(w, out->nickname, MAX_NAME - 1);
     noecho(); curs_set(0);
     if (!out->nickname[0]) goto abort;
@@ -164,7 +180,7 @@ pw_done:
         int   count   = 0;
         int   peer_sel = 0;
 
-        wtimeout(w, 200);   /* refresh peer list every 300ms */
+        wtimeout(w, 200);
         while (1) {
             count = discovery_peers(peers, MAX_PEERS);
             if (peer_sel >= count) peer_sel = count > 0 ? count - 1 : 0;

@@ -11,6 +11,7 @@ typedef struct {
     char nickname[MAX_NAME];
     char peer_ip[64];
     char password[MAX_PASS];
+    int  port;
 } MenuResult;
 
 int         tui_menu(MenuResult *out);

@@ -1,4 +1,2 @@
 *.o
 termchan
-tools/
-scripts/check_firewall.sh
