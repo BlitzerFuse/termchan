@@ -2,7 +2,7 @@
 set -e
 
 REPO="git@github.com:BlitzerFuse/termchan.git"
-DIR="$HOME/.termchan"
+DIR="$HOME/termchan"
 BIN_DIR="$HOME/bin"
 
 install_pkg() {
