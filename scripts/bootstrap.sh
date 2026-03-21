@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="git@github.com:BlitzerFuse/termchan.git"
+REPO="https://github.com/BlitzerFuse/termchan.git"
 DIR="$HOME/.termchan"
 BIN_DIR="$HOME/bin"
 
