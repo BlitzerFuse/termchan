@@ -54,8 +54,6 @@ int main(int argc, char *argv[]) {
     cfg.port = menu.port;
     config_save(&cfg);
 
-    discovery_stop();
-
     int port      = menu.port;
     int disc_port = menu.discovery_port;
 
@@ -74,9 +72,11 @@ int main(int argc, char *argv[]) {
         if (tui_lobby(&s, listener, menu.password[0] ? menu.password : NULL) < 0) {
             close(listener);
             firewall_close(port, disc_port);
+            discovery_stop();
             return 0;
         }
         close(listener);
+        discovery_stop();
 
         Packet start = { .type = CHAT_START };
         room_broadcast(&s, &start, -1);
@@ -103,6 +103,7 @@ int main(int argc, char *argv[]) {
             if (fd < 0) { endwin(); return 1; }
 
             room_add(&s, fd, host_nick[0] ? host_nick : menu.peer_ip);
+            discovery_stop();
             break;
         }
 
