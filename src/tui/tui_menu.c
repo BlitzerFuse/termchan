@@ -24,7 +24,8 @@ void tui_get_local_ip(char *buf, size_t len) {
     for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
         if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
         if (ifa->ifa_flags & IFF_LOOPBACK) continue;
-        if (!(ifa->ifa_flags & IFF_UP))    continue;
+        if (!(ifa->ifa_flags & IFF_UP))        continue;
+        if (!(ifa->ifa_flags & IFF_BROADCAST)) continue;
         const char *ip = inet_ntoa(
             ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr);
         strncpy(buf, ip, len - 1);

@@ -128,27 +128,36 @@ static void *beacon_thread(void *arg) {
     BeaconArgs *a = arg;
     int disc_port = a->disc_port;
 
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) return NULL;
-
-    int bcast = 1, reuse = 1;
-    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &bcast, sizeof(bcast));
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-#ifdef SO_REUSEPORT
-    setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
-#endif
-
-    struct sockaddr_in local = {
-        .sin_family      = AF_INET,
-        .sin_addr.s_addr = INADDR_ANY,
-        .sin_port        = htons(disc_port)
+    /* Send socket: ephemeral port — our own broadcasts never loop back
+       to the recv socket, eliminating self-reception entirely. */
+    int send_sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (send_sock < 0) return NULL;
+    int bcast = 1;
+    setsockopt(send_sock, SOL_SOCKET, SO_BROADCAST, &bcast, sizeof(bcast));
+    struct sockaddr_in send_local = {
+        .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY, .sin_port = 0
     };
-    if (bind(sock, (struct sockaddr *)&local, sizeof(local)) < 0) {
-        close(sock); return NULL;
+    if (bind(send_sock, (struct sockaddr *)&send_local, sizeof(send_local)) < 0) {
+        close(send_sock); return NULL;
     }
 
+    /* Recv socket: bound to disc_port to receive beacons from other peers. */
+    int recv_sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (recv_sock < 0) { close(send_sock); return NULL; }
+    int reuse = 1;
+    setsockopt(recv_sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#ifdef SO_REUSEPORT
+    setsockopt(recv_sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+#endif
+    struct sockaddr_in recv_local = {
+        .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY,
+        .sin_port   = htons(disc_port)
+    };
+    if (bind(recv_sock, (struct sockaddr *)&recv_local, sizeof(recv_local)) < 0) {
+        close(send_sock); close(recv_sock); return NULL;
+    }
     struct timeval tv = { .tv_sec = 0, .tv_usec = BEACON_INTERVAL_MS * 1000 };
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     in_addr_t baddr = get_broadcast_addr();
     struct sockaddr_in dest = {
@@ -161,12 +170,13 @@ static void *beacon_thread(void *arg) {
     snprintf(beacon, sizeof(beacon), "%s %s", BEACON, a->nickname);
 
     while (!a->stop) {
-        sendto(sock, beacon, strlen(beacon), 0,
+        sendto(send_sock, beacon, strlen(beacon), 0,
                (struct sockaddr *)&dest, sizeof(dest));
+
         char buf[256] = {0};
         struct sockaddr_in from;
         socklen_t flen = sizeof(from);
-        ssize_t n = recvfrom(sock, buf, sizeof(buf) - 1, 0,
+        ssize_t n = recvfrom(recv_sock, buf, sizeof(buf) - 1, 0,
                              (struct sockaddr *)&from, &flen);
         if (n <= 0) continue;
         if (strncmp(buf, BEACON, strlen(BEACON)) != 0) continue;
@@ -180,7 +190,8 @@ static void *beacon_thread(void *arg) {
         table_upsert(inet_ntoa(from.sin_addr), nick);
     }
 
-    close(sock);
+    close(send_sock);
+    close(recv_sock);
     return NULL;
 }
 
