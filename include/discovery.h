@@ -11,8 +11,7 @@ typedef struct {
     char ip[64];
 } Peer;
 
-void discovery_start(const char *my_nickname);
-
+void discovery_start(const char *my_nickname, int port);
 void discovery_stop(void);
 
 int  discovery_peers(Peer *peers, int max);

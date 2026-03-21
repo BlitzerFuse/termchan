@@ -12,17 +12,22 @@
 #define LOBBY_W 54
 #define LOBBY_H 20
 
-static void draw_lobby(WINDOW *w, Session *s) {
+static void draw_lobby(WINDOW *w, Session *s, const char *password) {
     werase(w);
     box(w, 0, 0);
-    mvwprintw(w, 1, (LOBBY_W - 12) / 2, "Room Lobby");
+    mvwprintw(w, 1, (LOBBY_W - 10) / 2, "Create Room");
     mvwhline(w, 2, 1, ACS_HLINE, LOBBY_W - 2);
-    mvwprintw(w, 3, 2, "Host: %s", s->my_nick);
-    mvwprintw(w, 4, 2, "Peers (%d/%d):", s->count, MAX_CLIENTS);
+    mvwprintw(w, 3, 2, "Host    : %s", s->my_nick);
+    if (password && password[0])
+        mvwprintw(w, 4, 2, "Password: %s", password);
+    else
+        mvwprintw(w, 4, 2, "Password: none");
+    mvwhline(w, 5, 1, ACS_HLINE, LOBBY_W - 2);
+    mvwprintw(w, 6, 2, "Peers (%d/%d):", s->count, MAX_CLIENTS);
     for (int i = 0; i < s->count && i < MAX_CLIENTS; i++)
-        mvwprintw(w, 5 + i, 4, "  %s", s->nicks[i]);
+        mvwprintw(w, 7 + i, 4, "  %s", s->nicks[i]);
     mvwhline(w, 16, 1, ACS_HLINE, LOBBY_W - 2);
-    mvwprintw(w, 17, 2, "Enter = start chat    q = quit");
+    mvwprintw(w, 17, 2, "Enter = start    q = quit    (waiting for peers...)");
     wrefresh(w);
 }
 
@@ -70,7 +75,7 @@ int tui_lobby(Session *s, int listener_fd, const char *password) {
             }
         }
 
-        draw_lobby(w, s);
+        draw_lobby(w, s, password);
     }
 
     delwin(w);

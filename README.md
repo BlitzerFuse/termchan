@@ -6,12 +6,15 @@ A LAN chat application for the terminal, written in C. No internet, no server, n
 
 ## Features
 
-- **Automatic peer discovery** — broadcasts a UDP beacon every 500ms; peers appear in the connect screen as soon as they launch the app
-- **Multi-user rooms** — host creates a session, peers join through a lobby, host starts when ready (up to 7 peers)
-- **Optional password protection** — none, auto-generated, or manually set
-- **ncurses TUI** — full-terminal chat window with scrollback, input bar, and status messages
+- **Automatic peer discovery** — broadcasts a UDP beacon every 500ms; peers appear in the connect screen live as they launch the app
+- **Multi-user rooms** — host creates a room, peers join, host starts when ready (up to 7 peers)
+- **Optional password protection** — none, auto-generated, or manually set; shown in the room lobby
+- **Accept / reject connections** — host approves each incoming peer individually
+- **ncurses TUI** — full-terminal interface with scrollback, input bar, and status messages
 - **Slash commands** — see [Commands](#commands) below
-- **Configurable port** — set at launch via flag or in the menu
+- **Config file** — saves your nickname and ports to `~/.termchan/termchan.conf`
+- **Configurable port** — set in the config, in the menu, or with `-p` at launch
+- **Runtime firewall** — automatically opens and closes ports in ufw or firewalld for the duration of the session
 
 ---
 
@@ -57,20 +60,29 @@ termchan [-p <port>]
 Running two instances on the same machine requires different ports:
 
 ```bash
-# Terminal 1
-./termchan -p 5000
-
-# Terminal 2
-./termchan -p 5001
+./termchan -p 5000   # terminal 1
+./termchan -p 5001   # terminal 2
 ```
 
 ---
 
 ## How it works
 
-**Listen mode** — You become the host. The app opens a TCP listener and waits for connections. Peers who are in Connect mode will see you in their peer list within a second. You see a lobby showing everyone who has joined. Press Enter to start the chat session, which sends all peers a start signal simultaneously.
+### Create Room
 
-**Connect mode** — The app starts a background beacon thread that broadcasts your presence over UDP and listens for others doing the same. The peer list updates live. Select a peer with arrow keys and Enter, or press Tab/i to type an IP manually. After connecting you wait on a holding screen until the host starts the session.
+Select **Create Room** from the main menu, choose a password (or none), and you are dropped straight into the room lobby. The lobby shows:
+
+- Your nickname and password (or "none")
+- A live list of connected peers and how many slots remain
+- Controls: `Enter = start   q = quit   (waiting for peers...)`
+
+As people connect you see an accept/reject prompt for each one. You can start the chat at any time — even with an empty room — by pressing Enter. All connected peers receive a start signal and enter the chat simultaneously.
+
+### Connect
+
+Select **Connect** from the main menu. The peer list populates live as beacons arrive from other running instances. Navigate with arrow keys and press Enter to select a peer, press `r` to clear and wait for fresh beacons, or press `Tab`/`i` to type an IP manually.
+
+After connecting you will see a holding screen while waiting for the host to start the session.
 
 ---
 
@@ -79,13 +91,38 @@ Running two instances on the same machine requires different ports:
 | Command | Description |
 |---|---|
 | `/help` | List all commands |
-| `/nick <name>` | Change your nickname — notifies all peers |
-| `/me` | Show your name, IP, role, and peer count |
+| `/nick <n>` | Change your nickname — notifies all peers immediately |
+| `/me` | Show your nickname, IP, role (host/guest), and peer count |
 | `/ip` | Show your local IP address |
-| `/reply <msg>` | Reply to the last person who sent a message |
-| `/pass` | Show the session password (host only) |
+| `/reply <msg>` | Reply to the last person who sent a message (prefixes `@nick`) |
+| `/pass` | Show the session password — host only |
 | `/clear` | Clear the chat window |
 | `/quit` | Leave the session |
+
+---
+
+## Config
+
+The config file lives at `~/.termchan/termchan.conf` and is created automatically on first run. Edit it with any text editor:
+
+```ini
+# term-chan configuration
+# Lines starting with # are comments.
+
+nickname       = yourname
+port           = 5000
+discovery_port = 5051
+```
+
+| Key | Default | Description |
+|---|---|---|
+| `nickname` | *(empty)* | Pre-fills the nickname field in the menu |
+| `port` | `5000` | Default TCP chat port |
+| `discovery_port` | `5051` | UDP port used for peer discovery beacons |
+
+Settings are saved back automatically when you exit the menu, so whatever you last used becomes the new default.
+
+**Priority order:** config file → menu edits → `-p` flag (flag takes highest precedence).
 
 ---
 
@@ -95,30 +132,37 @@ Running two instances on the same machine requires different ports:
 termchan/
 ├── include/
 │   ├── protocol.h       # Packet struct, MsgType enum
-│   ├── session.h        # Session struct (peers, fds, nicks)
+│   ├── session.h        # Session (peers, fds, nicks, password)
 │   ├── chat.h           # start_chat()
-│   ├── room.h           # room_broadcast / add / remove
+│   ├── room.h           # room_broadcast / add / remove / shutdown
 │   ├── network.h        # TCP connect / accept / handshake
 │   ├── discovery.h      # UDP beacon API
 │   ├── commands.h       # Command dispatch
+│   ├── config.h         # Config load / save / defaults
+│   ├── firewall.h       # Runtime firewall open / close
 │   ├── tui.h            # Public TUI API
 │   └── tui_internal.h   # TUI-internal helpers
 ├── src/
-│   ├── main.c
+│   ├── main.c           # Entry point, arg parsing, session setup
+│   ├── config.c         # Config file read/write
+│   ├── termchan.conf    # Default config (reference copy)
 │   ├── chat/
 │   │   ├── chat.c       # Per-peer recv threads, input loop
 │   │   ├── commands.c   # /command handlers
-│   │   └── room.c       # Peer list + mutex-safe broadcast
+│   │   └── room.c       # Peer list with mutex-safe broadcast
 │   ├── network/
-│   │   ├── network.c    # TCP listener, connect, handshake
-│   │   └── discovery.c  # UDP beacon thread + peer table
+│   │   ├── network.c    # TCP listener, connect, handshake packets
+│   │   ├── discovery.c  # UDP beacon thread and peer table
+│   │   └── firewall.c   # ufw / firewalld integration
 │   └── tui/
-│       ├── tui.c        # ncurses init, resize signal
+│       ├── tui.c        # ncurses init, locale, resize signal
 │       ├── tui_menu.c   # Main menu, peer list, waiting screens
 │       ├── tui_chat.c   # Chat window, input bar, message display
-│       └── tui_lobby.c  # Host lobby screen
+│       └── tui_lobby.c  # Room lobby (host view)
 ├── scripts/
-│   └── bootstrap.sh     # Install dependencies, clone, build
+│   └── bootstrap.sh     # Install deps, clone, build, install binary
+├── LICENSE
+├── README.md
 └── Makefile
 ```
 
@@ -129,18 +173,19 @@ termchan/
 | Port | Protocol | Purpose |
 |---|---|---|
 | 5000 (default) | TCP | Chat connections |
-| 5051 | UDP | Peer discovery beacons |
+| 5051 (default) | UDP | Peer discovery beacons |
 
-Make sure your firewall allows these if peers can't find or connect to each other.
+If you have ufw or firewalld running, term-chan opens these ports automatically when a room is created and closes them when the session ends. If neither firewall is active nothing special is needed.
 
 ---
 
 ## Notes
 
 - Both peers must be on the same local network
-- Nicknames cannot contain spaces (they are replaced with underscores)
-- Passwords are 6 characters, A–Z and 0–9 only
-- The session supports up to 7 peers plus the host
+- Nicknames cannot contain spaces — they are replaced with underscores automatically
+- Passwords are 6 characters, A-Z and 0-9 only
+- A room supports up to 7 peers plus the host
+- Changing your nickname with `/nick` notifies all peers in real time
 
 ## NOTICE
 

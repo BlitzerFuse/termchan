@@ -91,7 +91,7 @@ int tui_menu(MenuResult *out) {
     for (int i = 0; out->nickname[i]; i++)
         if (out->nickname[i] == ' ') out->nickname[i] = '_';
 
-    discovery_start(out->nickname);
+    discovery_start(out->nickname, out->discovery_port);
 
     mvwhline(w, 7, 1, ACS_HLINE, bw - 2);
     mvwprintw(w, 8, 2, "Mode (arrows + Enter):");
@@ -99,7 +99,7 @@ int tui_menu(MenuResult *out) {
     int mode_sel = 0;
     while (1) {
         if (mode_sel == 0) wattron(w, A_REVERSE);
-        mvwprintw(w, 9, 4, " Listen (wait) ");
+        mvwprintw(w, 9, 4, " Create Room  ");
         if (mode_sel == 0) wattroff(w, A_REVERSE);
         if (mode_sel == 1) wattron(w, A_REVERSE);
         mvwprintw(w, 9, 21, " Connect       ");
@@ -180,7 +180,7 @@ pw_done:
         int   count   = 0;
         int   peer_sel = 0;
 
-        wtimeout(w, 200);
+        wtimeout(w, 200);   /* refresh peer list every 300ms */
         while (1) {
             count = discovery_peers(peers, MAX_PEERS);
             if (peer_sel >= count) peer_sel = count > 0 ? count - 1 : 0;

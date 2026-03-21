@@ -117,6 +117,7 @@ static int is_local_addr(in_addr_t addr) {
 
 typedef struct {
     char         nickname[MAX_NAME];
+    int          disc_port;
     volatile int stop;
 } BeaconArgs;
 
@@ -125,6 +126,7 @@ static pthread_t    g_beacon_tid;
 
 static void *beacon_thread(void *arg) {
     BeaconArgs *a = arg;
+    int disc_port = a->disc_port;
 
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) return NULL;
@@ -139,7 +141,7 @@ static void *beacon_thread(void *arg) {
     struct sockaddr_in local = {
         .sin_family      = AF_INET,
         .sin_addr.s_addr = INADDR_ANY,
-        .sin_port        = htons(DISCOVERY_PORT)
+        .sin_port        = htons(disc_port)
     };
     if (bind(sock, (struct sockaddr *)&local, sizeof(local)) < 0) {
         close(sock); return NULL;
@@ -151,7 +153,7 @@ static void *beacon_thread(void *arg) {
     in_addr_t baddr = get_broadcast_addr();
     struct sockaddr_in dest = {
         .sin_family      = AF_INET,
-        .sin_port        = htons(DISCOVERY_PORT),
+        .sin_port        = htons(disc_port),
         .sin_addr.s_addr = baddr
     };
 
@@ -183,7 +185,7 @@ static void *beacon_thread(void *arg) {
 }
 
 // Public API
-void discovery_start(const char *my_nickname) {
+void discovery_start(const char *my_nickname, int port) {
     if (g_beacon) return;
 
     memset(g_table, 0, sizeof(g_table));
@@ -192,6 +194,7 @@ void discovery_start(const char *my_nickname) {
     if (!g_beacon) return;
     strncpy(g_beacon->nickname, my_nickname, MAX_NAME - 1);
     g_beacon->nickname[MAX_NAME - 1] = '\0';
+    g_beacon->disc_port = port > 0 ? port : DISCOVERY_PORT;
     g_beacon->stop = 0;
 
     pthread_create(&g_beacon_tid, NULL, beacon_thread, g_beacon);

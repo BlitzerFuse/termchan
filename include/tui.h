@@ -12,6 +12,7 @@ typedef struct {
     char peer_ip[64];
     char password[MAX_PASS];
     int  port;
+    int  discovery_port;
 } MenuResult;
 
 int         tui_menu(MenuResult *out);

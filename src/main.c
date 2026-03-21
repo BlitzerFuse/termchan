@@ -4,6 +4,8 @@
 #include "room.h"
 #include "tui.h"
 #include "discovery.h"
+#include "config.h"
+#include "firewall.h"
 #include "protocol.h"
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -13,17 +15,17 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define DEFAULT_PORT 5000
-
 static void usage(const char *prog) {
     fprintf(stderr, "Usage: %s [-p <port>]\n", prog);
-    fprintf(stderr, "  -p, --port <port>  TCP port to listen/connect on (default: %d)\n",
-            DEFAULT_PORT);
+    fprintf(stderr, "  -p, --port <port>  TCP port (default: from config or 5000)\n");
 }
 
 int main(int argc, char *argv[]) {
-    int cli_port = 0;
+    Config cfg;
+    config_defaults(&cfg);
+    config_load(&cfg);
 
+    int cli_port = 0;
     for (int i = 1; i < argc; i++) {
         if ((strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--port") == 0)
             && i + 1 < argc) {
@@ -41,14 +43,21 @@ int main(int argc, char *argv[]) {
     }
 
     MenuResult menu = {0};
-    menu.port = cli_port ? cli_port : DEFAULT_PORT;
+    strncpy(menu.nickname, cfg.nickname, MAX_NAME - 1);
+    menu.port           = cli_port ? cli_port : cfg.port;
+    menu.discovery_port = cfg.discovery_port;
 
     if (tui_menu(&menu) < 0)
         return 0;
 
+    strncpy(cfg.nickname, menu.nickname, MAX_NAME - 1);
+    cfg.port = menu.port;
+    config_save(&cfg);
+
     discovery_stop();
 
-    int port = menu.port > 0 ? menu.port : DEFAULT_PORT;
+    int port      = menu.port;
+    int disc_port = menu.discovery_port;
 
     Session s = {0};
     strncpy(s.my_nick,  menu.nickname, MAX_NAME - 1);
@@ -60,40 +69,11 @@ int main(int argc, char *argv[]) {
         int listener = init_listener(port);
         if (listener < 0) { endwin(); return 1; }
 
-        while (s.count == 0) {
-            tui_waiting(port, menu.password[0] ? menu.password : NULL);
-
-            fd_set fds;
-            struct timeval tv = { .tv_sec = 0, .tv_usec = 300000 };
-            FD_ZERO(&fds); FD_SET(listener, &fds);
-            if (select(listener + 1, &fds, NULL, NULL, &tv) <= 0) continue;
-
-            char peer_ip[64]         = {0};
-            char peer_nick[MAX_NAME] = {0};
-            char peer_pass[MAX_PASS] = {0};
-            int conn = accept_connection(listener, peer_ip, peer_nick, peer_pass);
-            if (conn < 0) continue;
-
-            if (menu.password[0] &&
-                strcmp(peer_pass, menu.password) != 0) {
-                send_conn_wrong_pass(conn);
-                continue;
-            }
-            if (!tui_accept_request(peer_nick, peer_ip)) {
-                send_conn_reject(conn);
-                continue;
-            }
-            send_conn_accept(conn, menu.nickname);
-            room_add(&s, conn, peer_nick);
-
-            Packet join = { .type = PEER_JOIN };
-            strncpy(join.sender, peer_nick, MAX_NAME - 1);
-            snprintf(join.content, MAX_MSG - 1, "%s joined the room.", peer_nick);
-            room_broadcast(&s, &join, conn);
-        }
+        firewall_open(port, disc_port);
 
         if (tui_lobby(&s, listener, menu.password[0] ? menu.password : NULL) < 0) {
             close(listener);
+            firewall_close(port, disc_port);
             return 0;
         }
         close(listener);
@@ -135,5 +115,9 @@ int main(int argc, char *argv[]) {
     tui_init(menu.nickname);
     start_chat(&s, tui_display_message);
     tui_shutdown();
+
+    if (s.is_host)
+        firewall_close(port, disc_port);
+
     return 0;
 }

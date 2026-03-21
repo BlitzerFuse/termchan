@@ -7,10 +7,12 @@ SRC = src/main.c \
 			src/chat/room.c \
       src/network/network.c \
       src/network/discovery.c \
+			src/network/firewall.c \
       src/tui/tui.c \
 			src/tui/tui_menu.c \
 			src/tui/tui_chat.c \
-			src/tui/tui_lobby.c 
+			src/tui/tui_lobby.c \
+			src/config.c 
 
 OBJ = $(SRC:.c=.o)
 TARGET = termchan
