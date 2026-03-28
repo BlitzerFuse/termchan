@@ -66,7 +66,13 @@ int main(int argc, char *argv[]) {
         s.is_host = 1;
 
         int listener = init_listener(port);
-        if (listener < 0) { endwin(); return 1; }
+        if (listener < 0) {
+            endwin();
+            fprintf(stderr, "Error: could not bind to port %d.\n"
+                    "Is another termchan session already running?\n"
+                    "Try: ss -tlnp | grep %d\n", port, port);
+            return 1;
+        }
 
         endwin();
         firewall_open(port, disc_port);

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/random.h>
 #include <net/if.h>
 #include <ifaddrs.h>
 #include <arpa/inet.h>
@@ -153,9 +154,16 @@ pw_done:
         if (pw_sel == 0) {
             out->password[0] = '\0';
         } else if (pw_sel == 1) {
-            srand((unsigned)time(NULL));
+            /* Use getrandom() for a cryptographically random password.
+               Falls back to /dev/urandom if getrandom() is unavailable. */
+            unsigned char rnd[PASS_LEN];
+            if (getrandom(rnd, sizeof(rnd), 0) != (ssize_t)sizeof(rnd)) {
+                /* fallback: /dev/urandom */
+                FILE *uf = fopen("/dev/urandom", "rb");
+                if (uf) { fread(rnd, 1, sizeof(rnd), uf); fclose(uf); }
+            }
             for (int i = 0; i < PASS_LEN; i++)
-                out->password[i] = PASS_CHARS[rand() % (sizeof(PASS_CHARS) - 1)];
+                out->password[i] = PASS_CHARS[rnd[i] % (sizeof(PASS_CHARS) - 1)];
             out->password[PASS_LEN] = '\0';
             mvwprintw(w, 13, 2, "Password: %s  (share this)", out->password);
             mvwprintw(w, 14, 2, "Press Enter to continue...");

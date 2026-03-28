@@ -63,12 +63,21 @@ void room_nick_for_fd(Session *s, int fd, char *out, size_t len) {
 }
 
 void room_shutdown_all(Session *s) {
+    int fds[MAX_CLIENTS];
+    int count;
+
     pthread_mutex_lock(&room_mu);
-    for (int i = 0; i < s->count; i++) {
-        shutdown(s->fds[i], SHUT_RD);
-        close(s->fds[i]);
-    }
+    count = s->count;
+    for (int i = 0; i < count; i++)
+        fds[i] = s->fds[i];
+    s->count = 0;  /* zero count before releasing lock */
     pthread_mutex_unlock(&room_mu);
+
+    /* Close fds outside the lock so we don't block broadcasts */
+    for (int i = 0; i < count; i++) {
+        shutdown(fds[i], SHUT_RD);
+        close(fds[i]);
+    }
 }
 
 void room_rename(Session *s, int fd, const char *new_nick) {

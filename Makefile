@@ -1,5 +1,5 @@
 CC     = gcc
-CFLAGS = -Wall -Iinclude
+CFLAGS = -Wall -Wextra -pthread -Iinclude
 
 SRC = src/main.c \
       src/chat/chat.c \
