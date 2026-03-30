@@ -15,6 +15,7 @@ typedef enum {
     PEER_JOIN,
     PEER_LEAVE,
     NICK_CHANGE,
+    ROSTER_SYNC,   /* host->guest: newline-sep peer list in content, host nick in sender */
 } MsgType;
 
 typedef struct {

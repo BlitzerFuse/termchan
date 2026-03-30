@@ -17,12 +17,15 @@ typedef struct {
 
 int         tui_menu(MenuResult *out);
 int         tui_accept_request(const char *peer_nick, const char *peer_ip);
-void        tui_waiting(int port, const char *password);
-void        tui_waiting_for_start(void);
-void        tui_waiting_for_start_msg(const char *msg);
 const char *tui_enter_password(const char *peer_nick, const char *peer_ip);
-int         tui_lobby(Session *s, int listener_fd, const char *password);
-void        tui_init(const char *nickname);
+int         tui_lobby(Session *s, int listener_fd, const char *password, int port);
+
+/* Waiting screen: blocks until CHAT_START received (returns 0) or user quits (returns -1). */
+int         tui_waiting_run(int sock, const char *host_nick,
+                            const char *host_ip, int port,
+                            const char *my_nick);
+
+void        tui_init(const char *nickname, Session *s);
 void        tui_shutdown(void);
 void        tui_display_message(Packet *p);
 void        tui_status(const char *fmt, ...);

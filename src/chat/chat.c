@@ -50,6 +50,10 @@ static void *peer_recv_thread(void *arg) {
             continue;
         }
 
+        /* ROSTER_SYNC is only meaningful during the pre-chat lobby/waiting
+           phase. Silently drop it if it somehow arrives in live chat. */
+        if (p.type == ROSTER_SYNC) continue;
+
         if (a->s->is_host) {
             strncpy(p.target, "everyone", MAX_NAME - 1);
             room_broadcast(a->s, &p, a->fd);

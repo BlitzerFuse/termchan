@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-REPO="https://github.com/BlitzerFuse/termchan.git"
+REPO="https://github.com/BlitzerFuse/termchan"
 DIR="$HOME/.termchan"
-BIN_DIR="$HOME/bin"
+BIN_DIR="$HOME/.bin"
 
 install_pkg() {
   if command -v pacman &>/dev/null; then

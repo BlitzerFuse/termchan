@@ -83,6 +83,12 @@ static CmdResult handle_reply(const char *args, char *nickname, Session *s) {
     return CMD_OK;
 }
 
+static CmdResult handle_hideotherpanels(const char *args, char *nickname, Session *s) {
+    (void)args; (void)nickname; (void)s;
+    tui_toggle_panels();
+    return CMD_OK;
+}
+
 static CmdResult handle_help(const char *args, char *nickname, Session *s);
 
 static const Command builtins[] = {
@@ -93,7 +99,8 @@ static const Command builtins[] = {
     { "ip",    "/ip",            handle_ip    },
     { "reply", "/reply <msg>",   handle_reply },
     { "pass",  "/pass",          handle_pass  },
-    { "help",  "/help",          handle_help  },
+    { "help",             "/help",                    handle_help             },
+    { "hideotherpanels",  "/hideotherpanels",          handle_hideotherpanels  },
 };
 #define N_BUILTINS ((int)(sizeof(builtins) / sizeof(builtins[0])))
 

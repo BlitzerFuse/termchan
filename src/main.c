@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
         endwin();
         firewall_open(port, disc_port);
 
-        if (tui_lobby(&s, listener, menu.password[0] ? menu.password : NULL) < 0) {
+        if (tui_lobby(&s, listener, menu.password[0] ? menu.password : NULL, port) < 0) {
             close(listener);
             firewall_close(port, disc_port);
             discovery_stop();
@@ -116,16 +116,15 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        tui_waiting_for_start();
-        Packet p;
-        while (recv(s.fds[0], &p, sizeof(Packet), 0) > 0) {
-            if (p.type == CHAT_START) break;
-            if (p.type == PEER_JOIN)
-                tui_waiting_for_start_msg(p.content);
+        if (tui_waiting_run(s.fds[0], host_nick,
+                            menu.peer_ip, port,
+                            menu.nickname) < 0) {
+            close(s.fds[0]);
+            return 0;
         }
     }
 
-    tui_init(menu.nickname);
+    tui_init(menu.nickname, &s);
     start_chat(&s, tui_display_message);
     tui_shutdown();
 
