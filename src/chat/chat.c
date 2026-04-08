@@ -111,7 +111,7 @@ static void *accept_thread(void *arg) {
 
         pthread_t tid;
         spawn_peer_thread(s, conn, a->display_cb, a->running, &tid);
-        pthread_detach(tid);
+        if (tid) pthread_detach(tid);
     }
 
     free(a);
@@ -121,6 +121,7 @@ static void *accept_thread(void *arg) {
 static void spawn_peer_thread(Session *s, int fd, void (*cb)(Packet *),
                               atomic_int *running, pthread_t *tid) {
     PeerArgs *a = malloc(sizeof(PeerArgs));
+    if (!a) { *tid = 0; return; }
     a->s = s; a->fd = fd;
     a->display_cb = cb; a->running = running;
     pthread_create(tid, NULL, peer_recv_thread, a);
@@ -140,13 +141,17 @@ void start_chat(Session *s, void (*display_cb)(Packet *)) {
     pthread_t accept_tid = 0;
     if (s->is_host && s->listener_fd >= 0) {
         AcceptArgs *aa = malloc(sizeof(AcceptArgs));
+        if (!aa) goto shutdown;
         aa->s = s; aa->display_cb = display_cb; aa->running = &running;
         pthread_create(&accept_tid, NULL, accept_thread, aa);
     }
 
     while (atomic_load(&running)) {
         char *input = tui_get_input();
-        if (!input) break;
+        if (!input) {
+            if (tui_was_resized()) { tui_handle_resize(); continue; }
+            break;
+        }
         if (input[0] == '\0') { free(input); continue; }
 
         if (input[0] == '/') {
@@ -166,6 +171,7 @@ void start_chat(Session *s, void (*display_cb)(Packet *)) {
         if (display_cb) display_cb(&out);
     }
 
+shutdown:
     atomic_store(&running, 0);
 
     if (accept_tid) {
@@ -178,5 +184,5 @@ void start_chat(Session *s, void (*display_cb)(Packet *)) {
 
     room_shutdown_all(s);
     for (int i = 0; i < n_tids; i++)
-        pthread_join(tids[i], NULL);
+        if (tids[i]) pthread_join(tids[i], NULL);
 }

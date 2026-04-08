@@ -49,9 +49,8 @@ static Session *g_session              = NULL;
 static int      g_panels_hidden        = 0;
 
 static pthread_mutex_t tui_mu = PTHREAD_MUTEX_INITIALIZER;
-static int sep_col(void)    { return COLS - SIDEBAR_W - 2; }
-static int msg_inner_w(void){ return g_panels_hidden ? COLS - 2 : sep_col() - 1; }
-static int content_h(void)  { return LINES - 4; } /* rows 1 .. LINES-4 */
+static int sep_col(void)   { return COLS - SIDEBAR_W - 2; }
+static int content_h(void) { return LINES - 4; } /* rows 1 .. LINES-4 */
 
 static void draw_borders(void) {
     int sc = sep_col();
@@ -183,6 +182,24 @@ void tui_init(const char *nickname, Session *s) {
     draw_input_bar();
 }
 
+void tui_handle_resize(void) {
+    tui_clear_resize();
+    pthread_mutex_lock(&tui_mu);
+    destroy_windows();
+    erase();
+    draw_borders();
+    create_windows();
+    replay_history();
+    if (g_panels_hidden) {
+        wprintw(msg_win, "*** panels hidden -- /hideotherpanels to restore ***\n");
+        wrefresh(msg_win);
+    } else {
+        draw_sidebar();
+    }
+    draw_input_bar();
+    pthread_mutex_unlock(&tui_mu);
+}
+
 void tui_shutdown(void) {
     destroy_windows();
     endwin();
@@ -283,6 +300,7 @@ char *tui_get_input(void) {
     noecho();
     pthread_mutex_unlock(&tui_mu);
 
-    if (r == ERR || tui_was_resized()) return NULL;
+    if (tui_was_resized()) return NULL;  /* resize fired during read */
+    if (r == ERR) return NULL;
     return strdup(buf);
 }

@@ -15,6 +15,10 @@ int tui_was_resized(void) {
     return g_resized;
 }
 
+void tui_clear_resize(void) {
+    g_resized = 0;
+}
+
 void ncurses_start(void) {
     if (stdscr && !isendwin()) return;
     setlocale(LC_ALL, "");

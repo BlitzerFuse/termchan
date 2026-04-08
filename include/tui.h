@@ -27,9 +27,11 @@ int         tui_waiting_run(int sock, const char *host_nick,
 
 void        tui_init(const char *nickname, Session *s);
 void        tui_shutdown(void);
+void        tui_handle_resize(void);
 void        tui_display_message(Packet *p);
 void        tui_status(const char *fmt, ...);
 char       *tui_get_input(void);
 int         tui_was_resized(void);
+void        tui_clear_resize(void);
 
 #endif
